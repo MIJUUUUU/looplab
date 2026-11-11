@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import {readFile} from 'node:fs/promises';
+const source=(await readFile(new URL('../public/app.js',import.meta.url),'utf8')).split("$('#modelForm').onsubmit")[0];
+function setup(){let stored;const ctx=vm.createContext({document:{querySelector(){}},localStorage:{getItem(){return null},setItem(k,v){stored=v}},setTimeout,clearTimeout,Map,console});vm.runInContext(source,ctx);return {run:code=>vm.runInContext(code,ctx),stored:()=>stored}}
+test('follow-ups preserve each model’s own conversation and shared prompt',()=>{const {run}=setup();const a=run(`contextFor({turns:[{id:'one',prompt:'shared',results:[{profileId:'a',status:'done',text:'answer A'},{profileId:'b',status:'done',text:'answer B'}]},{id:'two'}]},{id:'two',prompt:'follow-up'},{id:'a'})`);assert.deepEqual(JSON.parse(JSON.stringify(a)),[{role:'user',content:'shared'},{role:'assistant',content:'answer A'},{role:'user',content:'follow-up'}]);});
+test('changed provider/endpoint cannot reuse a key from another destination',()=>{const {run}=setup();run(`keys.set('a',{secret:'secret-test',provider:'custom',baseURL:'https://first.example/v1'})`);assert.equal(run(`keyFor({id:'a',provider:'custom',baseURL:'https://first.example/v1'})`),'secret-test');assert.equal(run(`keyFor({id:'a',provider:'custom',baseURL:'https://other.example/v1'})`),'');assert.equal(run(`keyFor({id:'a',provider:'openai',baseURL:''})`),'');});
+test('keys are never serialized into browser storage',()=>{const {run,stored}=setup();run(`profiles=[{id:'a',provider:'openai',name:'My model',model:'example',baseURL:''}];keys.set('a',{secret:'secret-unique-test',provider:'openai',baseURL:''});save()`);assert(!stored().includes('secret-unique-test'));assert.equal(JSON.parse(stored()).profiles[0].model,'example');});
+test('failed responses are excluded from follow-up context',()=>{const {run}=setup();const result=run(`contextFor({turns:[{id:'one',prompt:'x',results:[{profileId:'a',status:'error',text:'partial'}]}]},{id:'two',prompt:'new'},{id:'a'})`);assert.equal(result.length,1);assert.equal(result[0].content,'new');});

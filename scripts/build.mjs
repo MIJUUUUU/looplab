@@ -1,0 +1,11 @@
+import {readFile,writeFile,mkdir,rm} from 'node:fs/promises';
+const root=new URL('../',import.meta.url);
+const assets={};
+for(const [path,file,type] of [['/','index.html','text/html; charset=utf-8'],['/app.js','app.js','text/javascript; charset=utf-8'],['/style.css','style.css','text/css; charset=utf-8']]) assets[path]={body:await readFile(new URL('public/'+file,root),'utf8'),type};
+const server=await readFile(new URL('server/worker.js',root),'utf8');
+await rm(new URL('dist/',root),{recursive:true,force:true});
+await mkdir(new URL('dist/server/',root),{recursive:true});
+await mkdir(new URL('dist/.openai/',root),{recursive:true});
+await writeFile(new URL('dist/server/index.js',root),'const ASSETS = '+JSON.stringify(assets)+';\n'+server);
+await writeFile(new URL('dist/.openai/hosting.json',root),await readFile(new URL('.openai/hosting.json',root)));
+console.log('Built embedded UI and streaming Worker');

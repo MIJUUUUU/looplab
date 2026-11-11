@@ -1,0 +1,10 @@
+{
+  "name": "looplab-llm",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "start": "node scripts/dev.mjs"
+  }
+}

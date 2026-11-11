@@ -84,3 +84,15 @@ for(const device of ['desktop','mobile'])$('#'+device).onclick=()=>{$('#preview'
 document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-tool]').forEach(t=>t.classList.toggle('active',t===b));$('#apiPanel').hidden=b.dataset.tool!=='api';$('#consolePanel').hidden=b.dataset.tool!=='console';});$('#clear').onclick=()=>{logCount=0;$('#logCount').textContent=0;$('#logs').replaceChildren();$('#response').textContent='응답 본문과 상태를 여기서 확인하세요.';$('#apiStatus').textContent='요청 대기 중';};
 let controller;$('#cancel').onclick=()=>controller?.abort();$('#send').onclick=async()=>{const button=$('#send');let timeout;try{const url=new URL($('#url').value);if(!['https:','http:'].includes(url.protocol))throw Error('HTTP 또는 HTTPS URL을 입력하세요.');const headers=JSON.parse($('#headers').value||'{}');if(!headers||Array.isArray(headers)||typeof headers!=='object')throw Error('헤더는 JSON 객체로 입력하세요.');controller=new AbortController();button.disabled=true;$('#cancel').disabled=false;$('#apiStatus').textContent='요청 중…';const method=$('#method').value;timeout=setTimeout(()=>controller.abort(),30000);const start=performance.now();const r=await fetch(url,{method,headers,body:['GET','HEAD'].includes(method)?undefined:$('#body').value,signal:controller.signal,credentials:'omit'});const text=await r.text();$('#apiStatus').textContent=`${r.status} ${r.statusText} · ${Math.round(performance.now()-start)} ms`;try{$('#response').textContent=JSON.stringify(JSON.parse(text),null,2);}catch{$('#response').textContent=text||'(응답 본문 없음)';}log('network',`${method} ${url} → ${r.status}`);}catch(e){$('#apiStatus').textContent='요청 실패';$('#response').textContent=e.name==='AbortError'?'요청이 취소되었거나 30초 제한을 초과했어요.':e.message+'\n\nURL, 네트워크 연결, 서버의 CORS 허용 설정을 확인하세요.';log('error',$('#response').textContent);}finally{clearTimeout(timeout);button.disabled=false;$('#cancel').disabled=true;controller=null;}};
 $('#download').onclick=()=>{const blob=new Blob([JSON.stringify({name:'Looplab project',mode,tailwind:$('#tailwind').checked,files:projects[mode]},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`looplab-${mode}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};chooseMode(mode);
+
+// Keep secondary controls out of the main writing surface.
+const frameworkLabel = {react:'React',vue:'Vue',html:'HTML'};
+$('#frameworkName').textContent=frameworkLabel[mode];
+document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{
+  $('#frameworkName').textContent=frameworkLabel[button.dataset.mode];
+  $('#frameworkMenu').open=false;
+}));
+document.addEventListener('click',event=>{
+  document.querySelectorAll('details.menu[open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false;});
+});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')document.querySelectorAll('details.menu').forEach(menu=>menu.open=false);});

@@ -1,1 +1,37 @@
-{"name":"looplab","version":"0.1.0","private":true,"main":"index.ts","type":"module","scripts":{"start":"expo start","android":"expo run:android","ios":"expo run:ios","web":"expo start --web","typecheck":"tsc --noEmit","test":"node --test tests/*.test.mjs","build":"node scripts/build.mjs","db:generate":"drizzle-kit generate","server":"node scripts/dev.mjs"},"dependencies":{"drizzle-orm":"0.45.4","expo":"~57.0.33","expo-crypto":"~57.0.4","expo-linking":"~57.0.14","expo-secure-store":"~57.0.0","expo-status-bar":"~57.0.1","react":"19.2.3","react-native":"0.86.3","react-native-safe-area-context":"~5.7.0","react-native-svg":"15.15.4"},"devDependencies":{"@types/react":"~19.2.2","drizzle-kit":"0.31.11","typescript":"~6.0.3"},"packageManager":"pnpm@12.18.0"}
+{
+  "name": "looplab",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.ts",
+  "type": "module",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs",
+    "build": "node scripts/build.mjs",
+    "db:generate": "drizzle-kit generate",
+    "server": "node scripts/dev.mjs",
+    "dev": "node scripts/mobile-dev.mjs"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.4",
+    "expo": "~57.0.33",
+    "expo-crypto": "~57.0.4",
+    "expo-linking": "~57.0.14",
+    "expo-secure-store": "~57.0.0",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-svg": "15.15.4"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "drizzle-kit": "0.31.11",
+    "typescript": "~6.0.3"
+  },
+  "packageManager": "pnpm@12.18.0"
+}

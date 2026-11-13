@@ -8,4 +8,4 @@ await mkdir(new URL('dist/server/',root),{recursive:true});
 await mkdir(new URL('dist/.openai/',root),{recursive:true});
 await writeFile(new URL('dist/server/index.js',root),'const ASSETS = '+JSON.stringify(assets)+';\n'+server);
 await writeFile(new URL('dist/.openai/hosting.json',root),await readFile(new URL('.openai/hosting.json',root)));
-console.log('Built embedded UI and streaming Worker');
+console.log('Built native-app invite page and room API Worker');

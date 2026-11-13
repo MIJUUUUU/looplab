@@ -1,4 +1,4 @@
-# 모여모여 — React Native / Expo
+# 사이로 — React Native / Expo
 
 2~6명이 함께 사용하는 도트 아지트 앱입니다. 기존 LLM 웹 도구를 교체했습니다. iOS·Android UI는 `App.tsx`와 `src/`에 있고, 웹 페이지는 초대 링크 안내 용도뿐입니다.
 

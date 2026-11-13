@@ -7,12 +7,12 @@ export const dayKey=(now=Date.now())=>new Date(now+9*3600000).toISOString().slic
 const catalog={plant:{name:'초록 화분',price:20},sofa:{name:'포근한 소파',price:40},rug:{name:'체크 러그',price:30},cat:{name:'잠자는 고양이',price:50},lamp:{name:'작은 스탠드',price:30},flowers:{name:'꽃 한 다발',price:25}};
 function text(value,min,max,label){if(typeof value!=='string'||value.trim().length<min||value.trim().length>max)throw error(`${label}은 ${min}~${max}자로 입력해 주세요.`);return value.trim()}
 function avatar(b){return {name:text(b.name,1,12,'이름'),hair:Math.max(0,Math.min(3,Math.trunc(Number(b.hair)||0))),outfit:Math.max(0,Math.min(5,Math.trunc(Number(b.outfit)||0)))}}
-async function body(req){const raw=await req.text();if(raw.length>16000)throw error('내용이 너무 길어요.',413);try{return JSON.parse(raw)}catch{throw error('요청을 읽을 수 없어요.')}}
+async function body(req){const raw=await req.text();if(raw.length>(new URL(req.url).pathname==='/api/photo'?1450000:16000))throw error('내용이 너무 길어요.',413);try{return JSON.parse(raw)}catch{throw error('요청을 읽을 수 없어요.')}}
 const first=(db,sql,...args)=>db.prepare(sql).bind(...args).first();
 const all=async(db,sql,...args)=>(await db.prepare(sql).bind(...args).all()).results;
 const run=(db,sql,...args)=>db.prepare(sql).bind(...args).run();
 async function member(db,user){return first(db,'SELECT m.*, r.name AS room_name, r.owner_id, r.capacity, r.started_at, r.code, r.theme, r.furniture, r.revision FROM members m JOIN rooms r ON m.room_id=r.id WHERE m.user_id=?',user)}
-async function snapshot(db,user){const m=await member(db,user);if(!m)return {room:null,userId:user,catalog};const room=await first(db,'SELECT * FROM rooms WHERE id=?',m.room_id);const members=await all(db,'SELECT id,user_id,name,hair,outfit,x,y,message,seen,coins,checked_day FROM members WHERE room_id=? ORDER BY rowid',m.room_id);const events=room.started_at?await all(db,'SELECT * FROM events WHERE room_id=? ORDER BY date,time',m.room_id):[];return {userId:user,room:{...room,furniture:JSON.parse(room.furniture)},members,events:events.map(e=>({...e,participants:JSON.parse(e.participants)})),catalog,serverTime:Date.now(),today:dayKey()}}
+async function snapshot(db,user){const m=await member(db,user);if(!m)return {room:null,userId:user,catalog};const room=await first(db,'SELECT * FROM rooms WHERE id=?',m.room_id);const members=await all(db,'SELECT id,user_id,name,hair,outfit,x,y,message,seen,coins,checked_day,(SELECT version FROM member_photos WHERE user_id=members.user_id AND room_id=members.room_id) AS photo_version FROM members WHERE room_id=? ORDER BY rowid',m.room_id);const events=room.started_at?await all(db,'SELECT * FROM events WHERE room_id=? ORDER BY date,time',m.room_id):[];const notifications=await all(db,'SELECT * FROM notifications WHERE recipient_id=? AND room_id=? ORDER BY created_at DESC,rowid DESC LIMIT 100',user,m.room_id);const unread=await first(db,'SELECT count(*) AS count FROM notifications WHERE recipient_id=? AND room_id=? AND read_at IS NULL',user,m.room_id);return {notifications,unreadCount:unread.count,userId:user,room:{...room,furniture:JSON.parse(room.furniture)},members,events:events.map(e=>({...e,participants:JSON.parse(e.participants)})),catalog,serverTime:Date.now(),today:dayKey()}}
 export async function api(req,env){
  try{
  const db=env.DB;if(!db)throw error('서버 저장소를 준비 중이에요. 잠시 후 다시 시도해 주세요.',503);
@@ -31,6 +31,13 @@ export async function api(req,env){
  if(path==='/api/state'&&method==='GET'){
   await run(db,'UPDATE members SET seen=? WHERE user_id=? AND seen<?',Date.now(),user.id,Date.now()-10000);return json(await snapshot(db,user.id));
  }
+ if(path.startsWith('/api/photos/')&&method==='GET'){
+  const viewer=await member(db,user.id);if(!viewer)throw error('방 멤버만 사진을 볼 수 있어요.',403);
+  const target=path.slice('/api/photos/'.length);
+  const photo=await first(db,'SELECT p.data,p.version FROM member_photos p JOIN members m ON m.user_id=p.user_id AND m.room_id=p.room_id WHERE p.user_id=? AND p.room_id=?',target,viewer.room_id);
+  if(!photo)throw error('사진을 찾을 수 없어요.',404);
+  return json({image:'data:image/jpeg;base64,'+photo.data,version:photo.version});
+ }
  const b=await body(req);let m=await member(db,user.id);
  if(path==='/api/rooms'&&method==='POST'){
   if(m)throw error('이미 참여한 방이 있어요.',409);const p=avatar(b),capacity=Number(b.capacity);if(!Number.isInteger(capacity)||capacity<2||capacity>6)throw error('인원은 2~6명으로 선택해 주세요.');
@@ -46,9 +53,29 @@ export async function api(req,env){
   return json(await snapshot(db,user.id),201);
  }
  if(!m)throw error('먼저 방을 만들거나 초대 코드로 참여해 주세요.',403);
+ if(path==='/api/notifications/read'&&method==='POST'){
+  if(!Array.isArray(b.ids)||!b.ids.length||b.ids.length>100||b.ids.some(id=>typeof id!=='string'||id.length>64))throw error('읽을 알림을 확인해 주세요.');
+  await run(db,`UPDATE notifications SET read_at=COALESCE(read_at,?) WHERE recipient_id=? AND room_id=? AND id IN (${b.ids.map(()=>'?').join(',')})`,Date.now(),user.id,m.room_id,...b.ids);
+  return json(await snapshot(db,user.id));
+ }
+ if(path==='/api/notice'&&method==='POST'){
+  const notice=text(b.notice,0,200,'공지사항');
+  if(!Number.isInteger(b.revision))throw error('공지사항을 다시 열어 주세요.');
+  const result=await run(db,'UPDATE rooms SET notice=?,notice_editor=?,notice_updated_at=?,notice_revision=notice_revision+1 WHERE id=? AND notice_revision=?',notice,m.name,Date.now(),m.room_id,b.revision);
+  if(!result.meta.changes)throw error('다른 멤버가 공지를 수정했어요. 팝업을 다시 열어 확인해 주세요.',409);
+  return json(await snapshot(db,user.id));
+ }
  if(path==='/api/profile'&&method==='POST'){const p=avatar(b);await run(db,'UPDATE members SET name=?,hair=?,outfit=? WHERE user_id=?',p.name,p.hair,p.outfit,user.id);return json(await snapshot(db,user.id))}
  if(path==='/api/invite'&&method==='POST'){if(m.owner_id!==user.id)throw error('방장만 초대 코드를 변경할 수 있어요.',403);await run(db,'UPDATE rooms SET code=? WHERE id=?',uuid().replaceAll('-','').slice(0,10).toUpperCase(),m.room_id);return json(await snapshot(db,user.id))}
  if(!m.started_at)throw error('설정한 인원이 모두 모이면 시작할 수 있어요.',409);
+ if(path==='/api/photo'&&method==='POST'){
+  const data=b.base64;
+  if(typeof data!=='string'||data.length<8||data.length>1400000||data.length%4!==0||!/^[A-Za-z0-9+/]+={0,2}$/.test(data))throw error('사진 형식이나 크기를 확인해 주세요.');
+  const bytes=atob(data);
+  if(bytes.charCodeAt(0)!==255||bytes.charCodeAt(1)!==216||bytes.charCodeAt(2)!==255||bytes.charCodeAt(bytes.length-2)!==255||bytes.charCodeAt(bytes.length-1)!==217)throw error('JPEG 사진만 저장할 수 있어요.');
+  await run(db,'INSERT INTO member_photos(user_id,room_id,data,version,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET room_id=excluded.room_id,data=excluded.data,version=excluded.version,updated_at=excluded.updated_at',user.id,m.room_id,data,uuid(),Date.now());
+  return json(await snapshot(db,user.id));
+ }
  if(path==='/api/move'&&method==='POST'){const x=Number(b.x),y=Number(b.y);if(!Number.isFinite(x)||!Number.isFinite(y))throw error('위치를 확인해 주세요.');await run(db,'UPDATE members SET x=?,y=?,seen=? WHERE user_id=?',Math.max(10,Math.min(90,x)),Math.max(43,Math.min(84,y)),Date.now(),user.id);return json({ok:true})}
  if(path==='/api/message'&&method==='POST'){await run(db,'UPDATE members SET message=? WHERE user_id=?',text(b.message,0,60,'한마디'),user.id);return json(await snapshot(db,user.id))}
  if(path==='/api/checkin'&&method==='POST'){const result=await run(db,'UPDATE members SET coins=coins+10,checked_day=? WHERE user_id=? AND checked_day<>?',dayKey(),user.id,dayKey());return json({...await snapshot(db,user.id),reward:result.meta.changes?10:0})}

@@ -61,8 +61,9 @@ export async function api(req,env){
  }
  if(path==='/api/notice'&&method==='POST'){
   const notice=text(b.notice,0,200,'공지사항');
+  const title=b.title===undefined?null:text(b.title,0,40,'공지 제목');
   if(!Number.isInteger(b.revision))throw error('공지사항을 다시 열어 주세요.');
-  const result=await run(db,'UPDATE rooms SET notice=?,notice_editor=?,notice_updated_at=?,notice_revision=notice_revision+1 WHERE id=? AND notice_revision=?',notice,m.name,Date.now(),m.room_id,b.revision);
+  const result=await run(db,'UPDATE rooms SET notice=?,notice_title=COALESCE(?,notice_title),notice_editor=?,notice_updated_at=?,notice_revision=notice_revision+1 WHERE id=? AND notice_revision=?',notice,title,m.name,Date.now(),m.room_id,b.revision);
   if(!result.meta.changes)throw error('다른 멤버가 공지를 수정했어요. 팝업을 다시 열어 확인해 주세요.',409);
   return json(await snapshot(db,user.id));
  }

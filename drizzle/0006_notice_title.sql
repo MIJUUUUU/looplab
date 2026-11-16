@@ -1,0 +1,1 @@
+ALTER TABLE `rooms` ADD `notice_title` text DEFAULT '' NOT NULL;

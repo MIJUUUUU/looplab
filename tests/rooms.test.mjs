@@ -59,20 +59,26 @@ test('event registration notifies other members with date and title only after s
 
 test('room notices record editors, reject stale saves, and remain room-scoped',async()=>{
  const {db,room}=await setup();await join(db,2,room.room.code);
- const saved=await call(db,1,'notice',{notice:'토요일 오후에 만나요',revision:0});
+ const saved=await call(db,1,'notice',{title:'이번 주 모임',notice:'토요일 오후에 만나요',revision:0});
+ assert.equal(saved.room.notice_title,'이번 주 모임');
  assert.equal(saved.room.notice,'토요일 오후에 만나요');
  assert.equal(saved.room.notice_editor,'민지');
  assert(saved.room.notice_updated_at);
  assert.equal(saved.room.notice_revision,1);
  assert.equal((await call(db,2,'state')).room.notice,saved.room.notice);
+ assert.equal((await call(db,2,'state')).room.notice_title,'이번 주 모임');
  const edited=await call(db,2,'notice',{notice:'일요일에 만나요',revision:1});
  assert.equal(edited.room.notice_editor,'친구2');
  assert.equal(edited.room.notice_revision,2);
+ assert.equal(edited.room.notice_title,'이번 주 모임');
+ assert.equal((await call(db,1,'notice',{title:'x'.repeat(41),notice:'내용',revision:2})).status,400);
  assert.equal((await call(db,1,'notice',{notice:'오래된 수정',revision:1})).status,409);
  assert.equal((await call(db,3,'notice',{notice:'외부 수정',revision:2})).status,403);
  assert.equal((await call(db,1,'notice',{notice:'x'.repeat(201),revision:2})).status,400);
  assert.equal((await call(db,1,'notice',{notice:'잘못된 버전'})).status,400);
- assert.equal((await call(db,1,'notice',{notice:'',revision:2})).room.notice,'');
+ const cleared=await call(db,1,'notice',{title:'',notice:'',revision:2});
+ assert.equal(cleared.room.notice,'');
+ assert.equal(cleared.room.notice_title,'');
  db.close();
 });
 

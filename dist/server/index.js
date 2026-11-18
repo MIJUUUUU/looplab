@@ -5,9 +5,9 @@ const error=(message,status=400)=>Object.assign(new Error(message),{status});
 const sha=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),v=>v.toString(16).padStart(2,'0')).join('');
 const uuid=()=>crypto.randomUUID();
 export const dayKey=(now=Date.now())=>new Date(now+9*3600000).toISOString().slice(0,10);
-const catalog={plant:{name:'초록 화분',price:20},sofa:{name:'포근한 소파',price:40},rug:{name:'체크 러그',price:30},cat:{name:'잠자는 고양이',price:50},lamp:{name:'작은 스탠드',price:30},flowers:{name:'꽃 한 다발',price:25}};
+const catalog={plant:{name:'초록 화분',price:20},sofa:{name:'포근한 소파',price:40},rug:{name:'체크 러그',price:30},cat:{name:'잠자는 고양이',price:50},lamp:{name:'작은 스탠드',price:30},flowers:{name:'꽃 한 다발',price:25},bookshelf:{name:'작은 책장',price:40},clock:{name:'벽시계',price:25},frame:{name:'그림 액자',price:20},cushion:{name:'포근한 쿠션',price:15}};
 function text(value,min,max,label){if(typeof value!=='string'||value.trim().length<min||value.trim().length>max)throw error(`${label}은 ${min}~${max}자로 입력해 주세요.`);return value.trim()}
-function avatar(b){return {name:text(b.name,1,12,'이름'),hair:Math.max(0,Math.min(3,Math.trunc(Number(b.hair)||0))),outfit:Math.max(0,Math.min(5,Math.trunc(Number(b.outfit)||0)))}}
+function avatar(b){return {name:text(b.name,1,12,'이름'),hair:Math.max(0,Math.min(7,Math.trunc(Number(b.hair)||0))),outfit:Math.max(0,Math.min(5,Math.trunc(Number(b.outfit)||0)))}}
 async function body(req){const raw=await req.text();if(raw.length>(new URL(req.url).pathname==='/api/photo'?1450000:16000))throw error('내용이 너무 길어요.',413);try{return JSON.parse(raw)}catch{throw error('요청을 읽을 수 없어요.')}}
 const first=(db,sql,...args)=>db.prepare(sql).bind(...args).first();
 const all=async(db,sql,...args)=>(await db.prepare(sql).bind(...args).all()).results;
@@ -84,7 +84,7 @@ export async function api(req,env){
  if(path==='/api/decor'&&method==='POST'){
   const revision=Number(b.revision);if(!Number.isInteger(revision))throw error('공간을 다시 불러와 주세요.');
   if(!['cream','sage','pink','night'].includes(b.theme)||!Array.isArray(b.furniture)||b.furniture.some(k=>!catalog[k]))throw error('꾸미기 설정을 확인해 주세요.');
-  const result=await run(db,'UPDATE rooms SET theme=?,furniture=?,revision=revision+1 WHERE id=? AND revision=?',b.theme,JSON.stringify([...new Set(b.furniture)].slice(0,6)),m.room_id,revision);if(!result.meta.changes)throw error('친구가 먼저 방을 꾸몄어요. 새 상태를 확인하고 다시 적용해 주세요.',409);return json(await snapshot(db,user.id))
+  const result=await run(db,'UPDATE rooms SET theme=?,furniture=?,revision=revision+1 WHERE id=? AND revision=?',b.theme,JSON.stringify([...new Set(b.furniture)].slice(0,Object.keys(catalog).length)),m.room_id,revision);if(!result.meta.changes)throw error('친구가 먼저 방을 꾸몄어요. 새 상태를 확인하고 다시 적용해 주세요.',409);return json(await snapshot(db,user.id))
  }
  if(path==='/api/events'&&method==='POST'){
   const title=text(b.title,1,60,'일정 이름'),date=text(b.date,10,10,'날짜'),time=b.time||'',note=text(b.note||'',0,300,'메모');

@@ -121,3 +121,25 @@ test('invalid or oversized photos are rejected without notifications',async()=>{
  assert.equal((await call(db,1,'photo',{base64:null})).status,400);
  db.close();
 });
+
+test('new hairstyles persist and are shared with room members',async()=>{
+ const {db,room}=await setup();await join(db,2,room.room.code);
+ for(const hair of [4,5,6,7]){
+  const saved=await call(db,1,'profile',{name:'민지',hair,outfit:2});
+  assert.equal(saved.status,200);
+  assert.equal(saved.members.find(m=>m.user_id===saved.userId).hair,hair);
+  const friend=await call(db,2,'state');
+  assert.equal(friend.members.find(m=>m.user_id===saved.userId).hair,hair);
+ }
+ db.close();
+});
+
+test('all room decorations can be saved together and shared without truncation',async()=>{
+ const {db,room}=await setup();await join(db,2,room.room.code);
+ const furniture=['plant','sofa','rug','cat','lamp','flowers','bookshelf','clock','frame','cushion'];
+ const saved=await call(db,1,'decor',{theme:'cream',furniture,revision:0});
+ assert.equal(saved.status,200);
+ assert.deepEqual(saved.room.furniture,furniture);
+ assert.deepEqual((await call(db,2,'state')).room.furniture,furniture);
+ db.close();
+});

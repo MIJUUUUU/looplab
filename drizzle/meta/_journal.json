@@ -50,6 +50,20 @@
       "when": 1794796544270,
       "tag": "0006_notice_title",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1795137179566,
+      "tag": "0007_mini_games",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795153213360,
+      "tag": "0008_choice_complete_notifications",
+      "breakpoints": true
     }
   ]
 }

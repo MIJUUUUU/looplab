@@ -143,3 +143,52 @@ test('all room decorations can be saved together and shared without truncation',
  assert.deepEqual((await call(db,2,'state')).room.furniture,furniture);
  db.close();
 });
+
+test('daily choice hides answers until everyone joins and rewards once',async()=>{
+ const {db,room}=await setup();
+ assert.equal((await call(db,1,'games')).status,409);
+ await join(db,2,room.room.code);
+ assert.equal((await call(db,3,'games')).status,403);
+ const lobby=await call(db,1,'games');
+ const first=await call(db,1,'games/choice',{day:lobby.day,choice:0});
+ assert.equal(first.complete,false);assert.deepEqual(first.answers,[]);
+ const waiting=await call(db,1,'state');
+ assert.deepEqual(waiting.choiceStatus,{voted:true,complete:false,answered:1,total:2});
+ assert.equal(waiting.notifications.filter(n=>n.kind==='choice_complete').length,0);
+ assert.equal((await call(db,2,'games')).own,null);
+ assert.equal((await call(db,1,'games/choice',{day:lobby.day,choice:1})).own,0);
+ assert.equal((await call(db,2,'games/choice',{day:'2000-01-01',choice:0})).status,409);
+ const done=await call(db,2,'games/choice',{day:lobby.day,choice:1});
+ assert.equal(done.complete,true);assert.equal(done.answers.length,2);
+ await Promise.all([call(db,1,'games'),call(db,2,'games')]);
+ const state=await call(db,1,'state');assert(state.members.every(m=>m.coins===5));
+ assert.equal(state.choiceStatus.complete,true);
+ assert.equal(state.notifications.filter(n=>n.kind==='choice_complete').length,1);
+ assert.equal((await call(db,2,'state')).notifications.filter(n=>n.kind==='choice_complete').length,1);
+ await call(db,2,'games/choice',{day:lobby.day,choice:0});
+ assert.equal((await call(db,1,'state')).notifications.filter(n=>n.kind==='choice_complete').length,1);
+ db.sqlite.prepare("UPDATE mini_games SET day='2000-01-01' WHERE kind='choice'").run();
+ const nextDay=await call(db,1,'state');
+ assert.deepEqual(nextDay.choiceStatus,{voted:false,complete:false,answered:0,total:2});
+ db.close();
+});
+test('memory validates moves, conceals cards and caps rewards across replays',async()=>{
+ const {db,room}=await setup();await join(db,2,room.room.code);
+ assert.equal((await call(db,3,'games/memory/start',{})).status,403);
+ for(let round=0;round<2;round++){
+ let game=await call(db,1,'games/memory/start',{});
+ assert.equal(game.status,200);assert(game.cards.every(c=>c===null));
+ assert.equal((await call(db,1,'games/memory/flip',{index:12,version:game.version})).status,400);
+ const deck=JSON.parse(db.sqlite.prepare("SELECT data FROM mini_games WHERE kind='memory'").get().data).deck;
+ const initialVersion=game.version;
+ for(let value=0;value<6;value++){
+ for(const index of deck.map((v,i)=>v===value?i:-1).filter(i=>i>=0)){
+ game=await call(db,1,'games/memory/flip',{index,version:game.version});assert.equal(game.status,200);
+ }
+ }
+ assert.equal(game.complete,true);assert.equal(game.reward,round===0?5:0);
+ assert.equal((await call(db,1,'games/memory/flip',{index:0,version:initialVersion})).status,409);
+ }
+ assert.equal((await call(db,1,'state')).members[0].coins,5);
+ db.close();
+});

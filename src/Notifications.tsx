@@ -4,6 +4,7 @@ import type {RoomNotification} from './types';
 import {C,s} from './theme';
 
 export function notificationTitle(item:RoomNotification){
+ if(item.kind==='choice_complete')return '같은 답 고르기 투표가 완료됐어요';
  return `${item.actor_name}님이 ${item.kind==='event_created'?'일정을 등록했어요':item.kind==='photo'?'사진을 남겼어요':item.body?'한마디를 남겼어요':'한마디를 지웠어요'}`;
 }
 export function Notifications({items,busy,onSelect}:{items:RoomNotification[];busy:boolean;onSelect:(item:RoomNotification)=>void}){

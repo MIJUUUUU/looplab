@@ -13,7 +13,23 @@ const first=(db,sql,...args)=>db.prepare(sql).bind(...args).first();
 const all=async(db,sql,...args)=>(await db.prepare(sql).bind(...args).all()).results;
 const run=(db,sql,...args)=>db.prepare(sql).bind(...args).run();
 async function member(db,user){return first(db,'SELECT m.*, r.name AS room_name, r.owner_id, r.capacity, r.started_at, r.code, r.theme, r.furniture, r.revision FROM members m JOIN rooms r ON m.room_id=r.id WHERE m.user_id=?',user)}
-async function snapshot(db,user){const m=await member(db,user);if(!m)return {room:null,userId:user,catalog};const room=await first(db,'SELECT * FROM rooms WHERE id=?',m.room_id);const members=await all(db,'SELECT id,user_id,name,hair,outfit,x,y,message,seen,coins,checked_day,(SELECT version FROM member_photos WHERE user_id=members.user_id AND room_id=members.room_id) AS photo_version FROM members WHERE room_id=? ORDER BY rowid',m.room_id);const events=room.started_at?await all(db,'SELECT * FROM events WHERE room_id=? ORDER BY date,time',m.room_id):[];const notifications=await all(db,'SELECT * FROM notifications WHERE recipient_id=? AND room_id=? ORDER BY created_at DESC,rowid DESC LIMIT 100',user,m.room_id);const unread=await first(db,'SELECT count(*) AS count FROM notifications WHERE recipient_id=? AND room_id=? AND read_at IS NULL',user,m.room_id);return {notifications,unreadCount:unread.count,userId:user,room:{...room,furniture:JSON.parse(room.furniture)},members,events:events.map(e=>({...e,participants:JSON.parse(e.participants)})),catalog,serverTime:Date.now(),today:dayKey()}}
+async function snapshot(db,user){const m=await member(db,user);if(!m)return {room:null,userId:user,catalog};const room=await first(db,'SELECT * FROM rooms WHERE id=?',m.room_id);const members=await all(db,'SELECT id,user_id,name,hair,outfit,x,y,message,seen,coins,checked_day,(SELECT version FROM member_photos WHERE user_id=members.user_id AND room_id=members.room_id) AS photo_version FROM members WHERE room_id=? ORDER BY rowid',m.room_id);const events=room.started_at?await all(db,'SELECT * FROM events WHERE room_id=? ORDER BY date,time',m.room_id):[];const notifications=await all(db,'SELECT * FROM notifications WHERE recipient_id=? AND room_id=? ORDER BY created_at DESC,rowid DESC LIMIT 100',user,m.room_id);const unread=await first(db,'SELECT count(*) AS count FROM notifications WHERE recipient_id=? AND room_id=? AND read_at IS NULL',user,m.room_id);const choices=await all(db,"SELECT user_id FROM mini_games WHERE room_id=? AND day=? AND kind='choice'",m.room_id,dayKey());return {choiceStatus:{voted:choices.some(a=>a.user_id===user),complete:choices.length===members.length,answered:choices.length,total:members.length},notifications,unreadCount:unread.count,userId:user,room:{...room,furniture:JSON.parse(room.furniture)},members,events:events.map(e=>({...e,participants:JSON.parse(e.participants)})),catalog,serverTime:Date.now(),today:dayKey()}}
+
+const questions=[['쉬는 날 어디로 갈까요?','바다','산'],['오늘의 간식은?','달콤한 간식','짭짤한 간식'],['함께 보내는 저녁은?','집에서 영화','밖에서 산책'],['여행 스타일은?','미리 계획','즉흥 여행'],['더 좋아하는 계절은?','여름','겨울']];
+async function gameView(db,m,user){
+ const day=dayKey(),id=m.room_id+':'+day;
+ const answers=await all(db,"SELECT g.user_id,g.data,m.name FROM mini_games g JOIN members m ON m.user_id=g.user_id AND m.room_id=g.room_id WHERE g.room_id=? AND g.kind='choice' AND g.day=?",m.room_id,day);
+ const count=await first(db,'SELECT count(*) AS n FROM members WHERE room_id=?',m.room_id);
+ const complete=answers.length===count.n;
+ if(complete)await db.batch(answers.map(a=>db.prepare("INSERT OR IGNORE INTO game_rewards(id,user_id,kind,day) VALUES(?,?,'choice',?)").bind(id+':'+a.user_id,a.user_id,day)));
+ const rewards=await all(db,'SELECT kind FROM game_rewards WHERE user_id=? AND day=?',user,day);
+ const own=answers.find(a=>a.user_id===user);
+ return {day,question:questions[Math.floor(Date.parse(day)/86400000)%questions.length],answered:answers.length,total:count.n,own:own?JSON.parse(own.data):null,complete,answers:complete?answers.map(a=>({name:a.name,choice:JSON.parse(a.data)})):[],rewarded:rewards.map(r=>r.kind)};
+}
+function memoryView(game){
+ const d=JSON.parse(game.data);
+ return {id:game.id,version:game.version,cards:d.deck.map((v,i)=>d.matched.includes(i)||d.open.includes(i)?v:null),matched:d.matched,open:d.open,moves:d.moves,complete:d.matched.length===12};
+}
 export async function api(req,env){
  try{
  const db=env.DB;if(!db)throw error('서버 저장소를 준비 중이에요. 잠시 후 다시 시도해 주세요.',503);
@@ -38,6 +54,10 @@ export async function api(req,env){
   const photo=await first(db,'SELECT p.data,p.version FROM member_photos p JOIN members m ON m.user_id=p.user_id AND m.room_id=p.room_id WHERE p.user_id=? AND p.room_id=?',target,viewer.room_id);
   if(!photo)throw error('사진을 찾을 수 없어요.',404);
   return json({image:'data:image/jpeg;base64,'+photo.data,version:photo.version});
+ }
+ if(path==='/api/games'&&method==='GET'){
+ const m=await member(db,user.id);if(!m)throw error('방 멤버만 참여할 수 있어요.',403);if(!m.started_at)throw error('모두 모이면 시작할 수 있어요.',409);
+ return json(await gameView(db,m,user.id));
  }
  const b=await body(req);let m=await member(db,user.id);
  if(path==='/api/rooms'&&method==='POST'){
@@ -70,6 +90,39 @@ export async function api(req,env){
  if(path==='/api/profile'&&method==='POST'){const p=avatar(b);await run(db,'UPDATE members SET name=?,hair=?,outfit=? WHERE user_id=?',p.name,p.hair,p.outfit,user.id);return json(await snapshot(db,user.id))}
  if(path==='/api/invite'&&method==='POST'){if(m.owner_id!==user.id)throw error('방장만 초대 코드를 변경할 수 있어요.',403);await run(db,'UPDATE rooms SET code=? WHERE id=?',uuid().replaceAll('-','').slice(0,10).toUpperCase(),m.room_id);return json(await snapshot(db,user.id))}
  if(!m.started_at)throw error('설정한 인원이 모두 모이면 시작할 수 있어요.',409);
+ if(path==='/api/games/choice'&&method==='POST'){
+ if(b.day!==dayKey())throw error('날짜가 바뀌었어요. 게임을 다시 열어 주세요.',409);
+ if(b.choice!==0&&b.choice!==1)throw error('답을 선택해 주세요.');
+ await run(db,"INSERT OR IGNORE INTO mini_games(id,room_id,user_id,kind,day,data) VALUES(?,?,?,'choice',?,?)",m.room_id+':'+dayKey()+':'+user.id,m.room_id,user.id,dayKey(),JSON.stringify(b.choice));
+ return json(await gameView(db,m,user.id));
+ }
+ if(path==='/api/games/memory/start'&&method==='POST'){
+ const id='memory:'+user.id;
+ let game=await first(db,"SELECT * FROM mini_games WHERE id=? AND room_id=? AND day=?",id,m.room_id,dayKey());
+ if(!game||JSON.parse(game.data).matched.length===12){
+ const deck=Array.from({length:12},(_,i)=>i%6);
+ for(let i=11;i>0;i--){const j=crypto.getRandomValues(new Uint32Array(1))[0]%(i+1);[deck[i],deck[j]]=[deck[j],deck[i]]}
+ await run(db,"INSERT INTO mini_games(id,room_id,user_id,kind,day,data) VALUES(?,?,?,'memory',?,?) ON CONFLICT(id) DO UPDATE SET room_id=excluded.room_id,day=excluded.day,data=excluded.data,version=mini_games.version+1",id,m.room_id,user.id,dayKey(),JSON.stringify({deck,matched:[],open:[],moves:0}));
+ game=await first(db,'SELECT * FROM mini_games WHERE id=?',id);
+ }
+ return json(memoryView(game));
+ }
+ if(path==='/api/games/memory/flip'&&method==='POST'){
+ const game=await first(db,"SELECT * FROM mini_games WHERE id=? AND room_id=? AND user_id=? AND day=?",'memory:'+user.id,m.room_id,user.id,dayKey());
+ if(!game)throw error('게임을 다시 시작해 주세요.',409);
+ if(b.version!==game.version)throw error('게임을 다시 열어 주세요.',409);
+ const d=JSON.parse(game.data),i=b.index;
+ if(!Number.isInteger(i)||i<0||i>=12||d.matched.includes(i))throw error('다른 카드를 골라 주세요.');
+ if(d.open.length===2)d.open=[];
+ if(d.open.includes(i))throw error('다른 카드를 골라 주세요.');
+ d.open.push(i);
+ if(d.open.length===2){d.moves++;if(d.deck[d.open[0]]===d.deck[d.open[1]])d.matched.push(...d.open)}
+ const saved=await run(db,'UPDATE mini_games SET data=?,version=version+1 WHERE id=? AND version=?',JSON.stringify(d),game.id,game.version);
+ if(!saved.meta.changes)throw error('게임을 다시 열어 주세요.',409);
+ let reward=0;
+ if(d.matched.length===12){const r=await run(db,"INSERT OR IGNORE INTO game_rewards(id,user_id,kind,day) VALUES(?,?,'memory',?)",game.id+':'+dayKey(),user.id,dayKey());reward=r.meta.changes?5:0}
+ return json({...memoryView({...game,data:JSON.stringify(d),version:game.version+1}),reward});
+ }
  if(path==='/api/photo'&&method==='POST'){
   const data=b.base64;
   if(typeof data!=='string'||data.length<8||data.length>1400000||data.length%4!==0||!/^[A-Za-z0-9+/]+={0,2}$/.test(data))throw error('사진 형식이나 크기를 확인해 주세요.');

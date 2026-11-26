@@ -13,4 +13,4 @@ This original presentation image includes a warm background and surrounding spac
 
 Generated using the built-in image generation tool. Prompt direction: a single minimal Sairo wordmark with rounded bold lettering, a tiny white upper highlight, dark charcoal-to-black vertical gradient, an open final o, and a pale warm background.
 
-Current app asset: `sairo-wordmark-black.png`. The built-in image tool removed the original cream background while retaining the black/gray wordmark. Prompt: extract the original Sairo wordmark to alpha transparency, preserve shapes, spacing and grayscale gradient, with no green tint. Used only in the app header. There is no standalone logo intro. On launch, the original pixel character and loading indicator appear for at least two seconds while the app connects, remaining visible if the initial connection takes longer.
+`sairo-wordmark-black.png` is a transparent black/gray variant derived from the original. It is currently archived with the other brand explorations and is not referenced by the app. The app header currently renders the Korean name “사이로” as text. This file can be reused if a wordmark is introduced later.
